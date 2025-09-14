@@ -1,6 +1,6 @@
 all:
 	mkdir -p build
-	gcc main.c -o build/curl
+	gcc src/main.c -o build/curl -lssl -lcrypto
 
 clean:
 	rm -rf build
