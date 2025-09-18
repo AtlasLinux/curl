@@ -31,7 +31,6 @@ static void parse_url(const char *url, url_parts *u) {
         p += 8;
     }
 
-    // host[:port][/path]
     const char *slash = strchr(p, '/');
     const char *hostend = slash ? slash : p + strlen(p);
 
@@ -72,7 +71,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    int sock;
     struct hostent *host = gethostbyname(u.host);
     if (!host) {
         perror("gethostbyname");
@@ -84,7 +82,7 @@ int main(int argc, char **argv) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(u.port);
     memcpy(&addr.sin_addr.s_addr, host->h_addr, host->h_length);
-    sock = socket(AF_INET, SOCK_STREAM, 0);
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
         perror("socket");
         exit(EXIT_FAILURE);
@@ -117,7 +115,6 @@ int main(int argc, char **argv) {
             SSL_CTX_free(ctx);
             exit(EXIT_FAILURE);
         }
-        printf("Connected with %s encryption\n", SSL_get_cipher(ssl));
     }
 
     char request[2048];
@@ -129,7 +126,7 @@ int main(int argc, char **argv) {
 
     FILE *out = stdout;
     if (outfile) {
-        out = fopen(outfile, "w");
+        out = fopen(outfile, "wb");
         if (!out) {
             perror("fopen");
             if (ssl) SSL_free(ssl);
@@ -139,6 +136,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* send request */
     int len = strlen(request);
     int written = 0;
     while (written < len) {
@@ -151,12 +149,40 @@ int main(int argc, char **argv) {
         written += n;
     }
 
+    /* read and skip headers */
+    int header_done = 0;
+    char header_buf[8192];
+    size_t header_buf_len = 0;
     char buffer[4096];
-    int bytes;
-    while ((bytes = u.use_ssl ? SSL_read(ssl, buffer, sizeof(buffer) - 1)
-                              : recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0) {
-        buffer[bytes] = '\0';
-        fwrite(buffer, 1, bytes, out);
+
+    for (;;) {
+        int bytes = u.use_ssl ? SSL_read(ssl, buffer, sizeof(buffer))
+                              : recv(sock, buffer, sizeof(buffer), 0);
+        if (bytes <= 0) break;
+
+        if (!header_done) {
+            /* accumulate headers */
+            if (header_buf_len + bytes > sizeof(header_buf)) {
+                fprintf(stderr, "headers too large\n");
+                break;
+            }
+            memcpy(header_buf + header_buf_len, buffer, bytes);
+            header_buf_len += bytes;
+
+            /* find end of headers */
+            if (header_buf_len >= 4) {
+                void *hdr_end = memmem(header_buf, header_buf_len, "\r\n\r\n", 4);
+                if (hdr_end) {
+                    header_done = 1;
+                    size_t header_len = (unsigned char*)hdr_end + 4 - (unsigned char*)header_buf;
+                    size_t body_len = header_buf_len - header_len;
+                    if (body_len > 0)
+                        fwrite(header_buf + header_len, 1, body_len, out);
+                }
+            }
+        } else {
+            fwrite(buffer, 1, bytes, out);
+        }
     }
 
     if (outfile) fclose(out);
