@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -O2
 LDFLAGS = -L../../lib/libcurl/build -L../../lib
-LDLIBS = -lssl -lcurl
+LDLIBS = -lcurl -lssl -lcrypto
 
 BUILD_DIR = build
 SRC_DIR = src
