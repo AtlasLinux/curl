@@ -1,6 +1,34 @@
-all:
-	mkdir -p build
-	gcc -L../../lib/libcurl/build src/main.c -o build/curl -lcurl -L../../lib -lssl
+CC = gcc
+CFLAGS = -Wall -Wextra -O2
+LDFLAGS = -L../../lib/libcurl/build -L../../lib
+LDLIBS = -lssl -lcurl
+
+BUILD_DIR = build
+SRC_DIR = src
+
+SRC = $(shell find $(SRC_DIR) -name '*.c')
+OBJ = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC))
+
+TARGET = build/curl
+
+.PHONY: all clean run crun
+
+all: $(TARGET)
+
+$(TARGET): $(OBJ)
+	$(CC) -o $@ $^ $(LDFLAGS) $(LDLIBS)
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 clean:
-	rm -rf build
+	rm -rf $(BUILD_DIR) $(TARGET)
+
+run: all
+	@./$(TARGET)
+
+crun: clean run
